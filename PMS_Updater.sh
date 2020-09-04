@@ -6,14 +6,14 @@ VERBOSE=1
 REMOVE=1
 LOGGING=1
 
-PLEXTOKEN="$(sed -n 's/.*PlexOnlineToken="//p' /Plex\ Media\ Server/Preferences.xml | sed 's/\".*//')"
+PLEXTOKEN="$(sed -n 's/.*PlexOnlineToken="//p' /var/lib/plexmediaserver/Library/Application\ Support/Plex\ Media\ Server/Preferences.xml | sed 's/\".*//')"
 BASEURL="https://plex.tv/api/downloads/5.json"
 TOKENURL="$BASEURL?channel=plexpass&X-Plex-Token=$PLEXTOKEN"
 DOWNLOADPATH="/tmp"
 LOGPATH="/tmp"
 LOGFILE="PMS_Updater.log"
-PMSPARENTPATH="/usr/local/share"
-PMSPATTERN="PlexMediaServer-[0-9]*.[0-9]*.[0-9]*.[0-9]*-[0-9,a-f]*-FreeBSD-amd64.tar.bz2"
+PMSPARENTPATH="/usr/lib"
+PMSPATTERN="plexmediaserver_[0-9]*.[0-9]*.[0-9]*.[0-9]*-[0-9,a-f]*_amd64.deb"
 
 # Initialize CURRENTVER to the script max so if reading the current version fails
 # for some reason we don't blindly clobber things
@@ -113,7 +113,7 @@ webFetch()
 
     if [ $VERBOSE = 1 ]; then QUIET=""; fi
     echo Downloading $1 | LogMsg
-    fetch $QUIET -o "$DOWNLOADPATH/" "$1" >/dev/null 2>&1
+    wget $QUIET --directory-prefix="$DOWNLOADPATH" "$1" >/dev/null 2>&1
     if [ $? -ne 0 ]; then
         echo Error downloading $1
         exit 1
@@ -131,12 +131,13 @@ findLatest()
 {
     if [ $VERBOSE = 1 ]; then echo Using URL $BASEURL; fi
 
-    echo Searching $BASEURL for the FreeBSD download URL ..... | LogMsg -n
-    DOWNLOADURL="$(fetch -q $TOKENURL -o- | $PMSPARENTPATH/$PMSLIVEFOLDER/Plex\ Script\ Host -c 'import sys, json; myobj = json.load(sys.stdin); print(myobj["computer"]["FreeBSD"]["releases"][0]["url"]);')"
+    echo Searching $BASEURL for the Ubuntu download URL ..... | LogMsg -n
+    
+    DOWNLOADURL="$(wget -q -O - $TOKENURL | $PMSPARENTPATH/$PMSLIVEFOLDER/Plex\ Script\ Host -c 'import sys, json; myobj = json.load(sys.stdin); print(myobj["computer"]["Linux"]["releases"][1]["url"]);')"
 
     if [ "x$DOWNLOADURL" = "x" ]; then {
         # DOWNLOADURL is zero length, i.e. nothing matched PMSPATTERN. Error and exit
-        echo Could not find a FreeBSD download link on page $TOKENURL | LogMsg -f
+        echo Could not find a Ubuntu download link on page $TOKENURL | LogMsg -f
         exit 1
     } else {
         echo Done. | LogMsg -f
@@ -168,18 +169,19 @@ applyUpdate()
     echo Moving current Plex Media Server to backup location .....| LogMsg -n
     mv $PMSPARENTPATH/$PMSLIVEFOLDER/ $PMSPARENTPATH/$PMSBAKFOLDER/ 2>&1 | LogMsg
     echo Done. | LogMsg -f
-    echo Extracting $LOCALINSTALLFILE .....| LogMsg -n
-    mkdir $PMSPARENTPATH/$PMSLIVEFOLDER/ 2>&1 | LogMsg
-    tar -xj --strip-components 1 --file $LOCALINSTALLFILE --directory $PMSPARENTPATH/$PMSLIVEFOLDER/ 2>&1 | LogMsg -f
-    if [ $? -ne 0 ]; then {
-        echo Error exctracting $LOCALINSTALLFILE. Rolling back to previous version. | LogMsg -f
-        rm -rf $PMSPARENTPATH/$PMSLIVEFOLDER/ 2>&1 | LogMsg -f
-        mv $PMSPARENTPATH/$PMSBAKFOLDER/ $PMSPARENTPATH/$PMSLIVEFOLDER/ 2>&1 | LogMsg -f
-    } else {
-        echo Done. | LogMsg -f
-    } fi
-    ln -s $PMSPARENTPATH/$PMSLIVEFOLDER/Plex\ Media\ Server $PMSPARENTPATH/$PMSLIVEFOLDER/Plex_Media_Server 2>&1 | LogMsg
-    ln -s $PMSPARENTPATH/$PMSLIVEFOLDER/lib/libpython2.7.so.1 $PMSPARENTPATH/$PMSLIVEFOLDER/libpython2.7.so 2>&1 | LogMsg
+    #echo Extracting $LOCALINSTALLFILE .....| LogMsg -n
+    #mkdir $PMSPARENTPATH/$PMSLIVEFOLDER/ 2>&1 | LogMsg
+    #tar -xj --strip-components 1 --file $LOCALINSTALLFILE --directory $PMSPARENTPATH/$PMSLIVEFOLDER/ 2>&1 | LogMsg -f
+    #if [ $? -ne 0 ]; then {
+    #    echo Error exctracting $LOCALINSTALLFILE. Rolling back to previous version. | LogMsg -f
+    #    rm -rf $PMSPARENTPATH/$PMSLIVEFOLDER/ 2>&1 | LogMsg -f
+    #    mv $PMSPARENTPATH/$PMSBAKFOLDER/ $PMSPARENTPATH/$PMSLIVEFOLDER/ 2>&1 | LogMsg -f
+    #} else {
+    #    echo Done. | LogMsg -f
+    #} fi
+    #ln -s $PMSPARENTPATH/$PMSLIVEFOLDER/Plex\ Media\ Server $PMSPARENTPATH/$PMSLIVEFOLDER/Plex_Media_Server 2>&1 | LogMsg
+    #ln -s $PMSPARENTPATH/$PMSLIVEFOLDER/lib/libpython2.7.so.1 $PMSPARENTPATH/$PMSLIVEFOLDER/libpython2.7.so 2>&1 | LogMsg
+    dpkg -i $LOCALINSTALLFILE
     echo Starting Plex Media Server .....| LogMsg -n
     service $SERVICENAME start
     echo Done. | LogMsg -f
@@ -199,17 +201,18 @@ do
      esac
 done
 
-if [ -d "${PMSPARENTPATH}/plexmediaserver-plexpass" ]; then {
+#if [ -d "${PMSPARENTPATH}/plexmediaserver-plexpass" ]; then {
+#        PLEXPASS=1
+#        PMSLIVEFOLDER="plexmediaserver-plexpass"
+#        PMSBAKFOLDER="plexmediaserver-plexpass.bak"
+#        SERVICENAME="plexmediaserver"
+#} else {
+    # Removed Plex Pass check until another check can be figured out, plexpass doesn't go into a special folder on Ubuntu
         PLEXPASS=1
-        PMSLIVEFOLDER="plexmediaserver-plexpass"
-        PMSBAKFOLDER="plexmediaserver-plexpass.bak"
-        SERVICENAME="plexmediaserver_plexpass"
-} else {
-        PLEXPASS=0
         PMSLIVEFOLDER="plexmediaserver"
         PMSBAKFOLDER="plexmediaserver.bak"
         SERVICENAME="plexmediaserver"
-} fi
+#} fi
 
 
 export PYTHONHOME="$PMSPARENTPATH/$PMSLIVEFOLDER/Resources/Python"
@@ -237,12 +240,12 @@ if [ "x$LOCALINSTALLFILE" = "x" ]; then {
 
 # If either update flag is set then verify archive integrity and install
 if [ $FORCEUPDATE = 1 ] || [ $AUTOUPDATE = 1 ]; then {
-        echo Verifying $LOCALINSTALLFILE ..... | LogMsg -n
-    bzip2 -t $LOCALINSTALLFILE
-    if [ $? -ne 0 ]; then {
-        echo $LOCALINSTALLFILE is not a valid archive, cannot update with this file. | LogMsg -f
-    } else {
-        echo Done | LogMsg -f
+#        echo Verifying $LOCALINSTALLFILE ..... | LogMsg -n
+#    bzip2 -t $LOCALINSTALLFILE
+#    if [ $? -ne 0 ]; then {
+#        echo $LOCALINSTALLFILE is not a valid archive, cannot update with this file. | LogMsg -f
+#    } else {
+#        echo Done | LogMsg -f
         applyUpdate
-    } fi
+#    } fi
 } fi
